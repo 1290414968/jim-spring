@@ -53,7 +53,7 @@ public class DispatchServlet extends HttpServlet {
     }
     //从handlerAdapters中找到handlerMapping对应的Adapters对象，对参数进行处理
     private void initHandlerAdapters(ApplicationContext context) {
-
+        //先将类的属性进行策略封装，用于接受请求之后，对请求参数进行属性匹配
     }
     //经过方法，返回ModelAndView 对象
     private void initViewResolvers(ApplicationContext context) {
