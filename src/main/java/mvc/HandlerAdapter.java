@@ -5,7 +5,7 @@ import javax.servlet.http.HttpServletResponse;
  * 设计模式的经典使用
  */
 public class HandlerAdapter {
-    public ModelAndView hadler(HttpServletRequest req, HttpServletResponse resp, HandlerMapping handler) {
+    public ModelAndView handler(HttpServletRequest req, HttpServletResponse resp, HandlerMapping handler) {
         return null;
     }
 }

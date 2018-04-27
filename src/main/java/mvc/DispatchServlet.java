@@ -78,9 +78,9 @@ public class DispatchServlet extends HttpServlet {
         //1）、根据用户请求的URL来获得一个Handler
         HandlerMapping handler = getHandler(req);
         //2)、根据handlerMapping对象获取handlerAdapter对象
-        HandlerAdapter ha = getHandlerAdapter(handler);
+        HandlerAdapter ha = getHandlerAdapter(handler)  ;
         //3)、调用方法，得到ModelAndView返回对象
-        ModelAndView modelAndView =  ha.hadler(req, resp, handler);
+        ModelAndView modelAndView =  ha.handler(req, resp, handler);
         //4）、将modelAndView对象进行处理输出
         processDispatchResult(resp, modelAndView);
     }
