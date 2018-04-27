@@ -1,11 +1,15 @@
 package framework.context;
 
+import framework.annotation.Autowired;
+import framework.annotation.Controller;
+import framework.annotation.Service;
 import framework.beans.BeanDefinition;
 import framework.beans.BeanPostProcessor;
 import framework.beans.BeanWrapper;
 import framework.context.support.BeanDefinitionReader;
 import framework.core.BeanFactory;
 
+import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,6 +50,7 @@ public class ApplicationContext implements BeanFactory {
             }
         }
     }
+
     //实例化BeanWrapper
     public Object getBean(String beanName) {
         BeanDefinition  beanDefinition = this.beanDefinitionMap.get(beanName);
@@ -61,12 +66,46 @@ public class ApplicationContext implements BeanFactory {
             this.beanWrapperMap.put(beanName,beanWrapper);
             //在实例初始化以后调用一次,进行通知
             beanPostProcessor.postProcessAfterInitialization(instance,beanName);
+            populateBean(beanName,instance);
             //先将对象放入到包装对象上，然后返回包装对象上的实例对象
             return this.beanWrapperMap.get(beanName).getWrappedInstance();
         }catch (Exception e){
             e.printStackTrace();
         }
         return null;
+    }
+
+    /**
+     * 循环对象属性，如果有@Autowired的注解进行对象的注入
+     * @param beanName
+     * @param instance
+     */
+    public void populateBean(String beanName,Object instance){
+        Class clazz = instance.getClass();
+        if(!(clazz.isAnnotationPresent(Controller.class) ||
+                clazz.isAnnotationPresent(Service.class))){
+            return;
+        }
+        Field[] fields = clazz.getDeclaredFields();
+        for (Field field : fields) {
+            if (!field.isAnnotationPresent(Autowired.class)){ continue; }
+            Autowired autowired = field.getAnnotation(Autowired.class);
+            String autowiredBeanName = autowired.value().trim();
+            if("".equals(autowiredBeanName)){
+                autowiredBeanName = field.getType().getName();
+            }
+            field.setAccessible(true);
+            try {
+                Object autoBean =  this.beanWrapperMap.get(autowiredBeanName).getWrappedInstance();
+                if(autoBean==null){//递归-生成对象注入
+                    autoBean = getBean(autowiredBeanName);
+                }
+                field.set(instance,autoBean);
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            }
+            field.setAccessible(false);
+        }
     }
     //注册模式单例模式->判断是否是单例-并发下的单例会有问题
     private Object instantionBean(BeanDefinition beanDefinition){
