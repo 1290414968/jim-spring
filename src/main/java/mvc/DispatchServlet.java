@@ -1,5 +1,8 @@
 package mvc;
 
+import framework.annotation.Controller;
+import framework.annotation.RequestMapping;
+import framework.annotation.RequestParam;
 import framework.context.ApplicationContext;
 
 import javax.servlet.ServletConfig;
@@ -7,11 +10,16 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.File;
 import java.io.IOException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class DispatchServlet extends HttpServlet {
     private  final String LOCATION = "contextConfigLocation";
@@ -49,15 +57,71 @@ public class DispatchServlet extends HttpServlet {
     }
     //封装成List<HandlerMapping> 集合对象，requestMapping和method对应
     private void initHandlerMappings(ApplicationContext context) {
+        String [] beanNames = context.getBeanDefinitionNames();
+        //循环IOC容器中所有的bean
+        for (String beanName : beanNames){
+            Object controller = context.getBean(beanName);
+            Class controllerClazz = controller.getClass();
+            if(!controllerClazz.isAnnotationPresent(Controller.class)){//不是@Controller注解的实例
+                continue;
+            }
+            String baseUrl = "";
+            if(controllerClazz.isAnnotationPresent(RequestMapping.class)){//有@RequestMapping的注解
+                RequestMapping requestMapping  = (RequestMapping)controllerClazz.getAnnotation(RequestMapping.class);
+                baseUrl = requestMapping.value();
+            }
 
+            //反射获取到类的所有方法和方法上的requestMapping路径
+            Method[] methods = controllerClazz.getMethods();
+            for (Method method: methods) {
+                if(!controllerClazz.isAnnotationPresent(RequestMapping.class)){continue;}
+                RequestMapping requestMapping = method.getAnnotation(RequestMapping.class);
+                String regex = ("/" + baseUrl +requestMapping.value().replaceAll("\\*",".*")).replaceAll("/+","/");
+                Pattern pattern = Pattern.compile(regex);
+                this.handlerMappings.add(new HandlerMapping(pattern,controller,method));
+            }
+        }
+        //requestMapping映射url映射controller及方法完成
     }
     //从handlerAdapters中找到handlerMapping对应的Adapters对象，对参数进行处理
     private void initHandlerAdapters(ApplicationContext context) {
         //先将类的属性进行策略封装，用于接受请求之后，对请求参数进行属性匹配
+        //循环handlerMapping的集合对象，将Method中的方法取出来，形参进行赋值
+        for(HandlerMapping mapping:this.handlerMappings){
+            //形参的map集合，key->形参的名称，value->形参的位置
+            Map<String,Integer> paramMapping = new HashMap<String,Integer>();
+            //获取注解的自定义方法参数
+            Annotation[][] pa = mapping.getMethod().getParameterAnnotations();
+            for (int i = 0; i < pa.length ; i ++) {
+                for (Annotation a : pa[i]) {
+                    if(a instanceof RequestParam){
+                        String paramName = ((RequestParam) a).value();
+                        if(!"".equals(paramName.trim())){
+                            paramMapping.put(paramName,i);
+                        }
+                    }
+                }
+            }
+            Class<?>[] paramTypes = mapping.getMethod().getParameterTypes();
+            for (int i = 0;i < paramTypes.length; i ++) {
+                Class<?> type = paramTypes[i];
+                if(type == HttpServletRequest.class ||
+                        type == HttpServletResponse.class){
+                    paramMapping.put(type.getName(),i);
+                }
+            }
+            this.handlerAdapters.put(mapping,new HandlerAdapter(paramMapping));
+        }
     }
     //经过方法，返回ModelAndView 对象
     private void initViewResolvers(ApplicationContext context) {
-
+        //将目录下的模板文件，封装map集合 key->模板文件名称，value->模板文件
+        String templateRoot = context.getConfig().getProperty("templateRoot");
+        String templateRootPath = this.getClass().getClassLoader().getResource(templateRoot).getFile();
+        File templateRootDir = new File(templateRootPath);
+        for (File template : templateRootDir.listFiles()) {
+            this.viewResolvers.add(new ViewResolver(template.getName(),template));
+        }
     }
 
     @Override
@@ -74,7 +138,7 @@ public class DispatchServlet extends HttpServlet {
      *3、请求处理阶段
      *
      */
-    private void doDispatch(HttpServletRequest req, HttpServletResponse resp){
+    private void doDispatch(HttpServletRequest req, HttpServletResponse resp) throws  Exception{
         //1）、根据用户请求的URL来获得一个Handler
         HandlerMapping handler = getHandler(req);
         //2)、根据handlerMapping对象获取handlerAdapter对象
@@ -84,16 +148,35 @@ public class DispatchServlet extends HttpServlet {
         //4）、将modelAndView对象进行处理输出
         processDispatchResult(resp, modelAndView);
     }
-
-
+    //通过解析请求的url路径，循环集合handlerMapping的对象匹配正则
     private HandlerMapping getHandler(HttpServletRequest req) {
+        if(this.handlerMappings.isEmpty()){ return  null;}
+        String url = req.getRequestURI();
+        String contextPath = req.getContextPath();
+        url = url.replace(contextPath,"").replaceAll("/+","/");
+        for (HandlerMapping handler : this.handlerMappings) {
+            Matcher matcher = handler.getPattern().matcher(url);
+            if(!matcher.matches()){ continue;}
+            return handler;
+        }
         return null;
     }
     private HandlerAdapter getHandlerAdapter(HandlerMapping handler) {
-        return null;
+        if(this.handlerAdapters.isEmpty()){return  null;}
+        return this.handlerAdapters.get(handler);
     }
-    private void processDispatchResult(HttpServletResponse resp, ModelAndView modelAndView) {
-
+    private void processDispatchResult(HttpServletResponse resp, ModelAndView modelAndView) throws Exception {
+        //匹配集合中的模板页面，取出模板，调用viewResolver的resolveView方法进行页面处理
+        if(null == modelAndView){ return;}
+        if(this.viewResolvers.isEmpty()){ return;}
+        for (ViewResolver viewResolver: this.viewResolvers) {
+            if(!modelAndView.getViewName().equals(viewResolver.getViewName())){ continue; }
+            String out = viewResolver.viewResolver(modelAndView);
+            if(out != null){
+                resp.getWriter().write(out);
+                break;
+            }
+        }
     }
     /**
      * 以下先不自定义

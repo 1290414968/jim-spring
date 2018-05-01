@@ -4,9 +4,9 @@ import java.lang.reflect.Method;
 import java.util.regex.Pattern;
 
 public class HandlerMapping {
+    private Pattern pattern; //url正则对应
     private Object controller;//controller对象
     private Method method;//controller对象上的方法
-    private Pattern pattern; //url正则对应
     public HandlerMapping(Pattern pattern,Object controller, Method method) {
         this.controller = controller;
         this.method = method;
