@@ -3,6 +3,7 @@ package mvc;
 import framework.annotation.Controller;
 import framework.annotation.RequestMapping;
 import framework.annotation.RequestParam;
+import framework.aop.AopProxyUtils;
 import framework.context.ApplicationContext;
 
 import javax.servlet.ServletConfig;
@@ -33,13 +34,17 @@ public class DispatchServlet extends HttpServlet {
     @Override
     public void init(ServletConfig config) throws ServletException {
         ApplicationContext context = new ApplicationContext(config.getInitParameter(LOCATION));
-        initStrategies(context);
+        try {
+            initStrategies(context);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
     /**
      * 2、初始化阶段：
      * springMVC 九大组件的初始化
      */
-    private void initStrategies(ApplicationContext context) {
+    private void initStrategies(ApplicationContext context) throws Exception {
         initMultipartResolver(context);//文件上传解析，如果请求类型是multipart将通过MultipartResolver进行文件上传解析
         initLocaleResolver(context);//本地化解析
         initThemeResolver(context);//主题解析
@@ -56,11 +61,13 @@ public class DispatchServlet extends HttpServlet {
         initFlashMapManager(context);//flash映射管理器
     }
     //封装成List<HandlerMapping> 集合对象，requestMapping和method对应
-    private void initHandlerMappings(ApplicationContext context) {
+    private void initHandlerMappings(ApplicationContext context) throws Exception {
         String [] beanNames = context.getBeanDefinitionNames();
         //循环IOC容器中所有的bean
         for (String beanName : beanNames){
-            Object controller = context.getBean(beanName);
+
+            Object proxy = context.getBean(beanName);
+            Object controller = AopProxyUtils.getTargetObject(proxy);
             Class controllerClazz = controller.getClass();
             if(!controllerClazz.isAnnotationPresent(Controller.class)){//不是@Controller注解的实例
                 continue;

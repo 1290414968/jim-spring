@@ -1,5 +1,7 @@
 package framework.beans;
 
+import framework.aop.AopConfig;
+import framework.aop.AopProxy;
 import framework.core.FactoryBean;
 
 /**
@@ -9,12 +11,14 @@ import framework.core.FactoryBean;
 public class BeanWrapper extends FactoryBean {
     //还会用到  观察者  模式
     //支持事件响应，会有一个监听
+    private AopProxy proxy = new AopProxy();
     private BeanPostProcessor postProcessor;
     private Object wrapperInstance;
     //原始的通过反射new出来，要把包装起来，存下来
     private Object originalInstance;
     public BeanWrapper(Object instance){
-        this.wrapperInstance = instance;
+        //替换成代理对象
+        this.wrapperInstance = proxy.getProxy(instance);
         this.originalInstance = instance;
     }
     public BeanPostProcessor getPostProcessor() {
@@ -30,5 +34,9 @@ public class BeanWrapper extends FactoryBean {
     // 可能会是这个 $Proxy0
     public Class<?> getWrappedClass(){
         return this.wrapperInstance.getClass();
+    }
+
+    public void setAopConfig(AopConfig aopConfig) {
+        proxy.setConfig(aopConfig);
     }
 }

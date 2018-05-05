@@ -3,6 +3,7 @@ package framework.context;
 import framework.annotation.Autowired;
 import framework.annotation.Controller;
 import framework.annotation.Service;
+import framework.aop.AopConfig;
 import framework.beans.BeanDefinition;
 import framework.beans.BeanPostProcessor;
 import framework.beans.BeanWrapper;
@@ -10,20 +11,21 @@ import framework.context.support.BeanDefinitionReader;
 import framework.core.BeanFactory;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * @author jim
  * @create 2018-04-25 19:36
  **/
-public class ApplicationContext implements BeanFactory {
+public class ApplicationContext extends DefaultListableBeanFactory implements BeanFactory {
     private String [] configLocations;
     private BeanDefinitionReader reader;
-    //注册的时候将BeanName和BeanDefinition对象放入集合中
-    private Map<String,BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<String,BeanDefinition>();
     //在依赖注入的时候将Object对象实例化出来放入到集合中
     private Map<String,Object> cacheBeanMap = new ConcurrentHashMap<String,Object>();
     //在依赖注入的时候将BeanWrapper实例化出来放入到集合中
@@ -63,6 +65,8 @@ public class ApplicationContext implements BeanFactory {
             //在实例初始化以前调用一次,进行通知
             beanPostProcessor.postProcessBeforeInitialization(instance,beanName);
             BeanWrapper beanWrapper = new BeanWrapper(instance);
+            //初始化切面配置和给代理对象设置切面
+            beanWrapper.setAopConfig(instantionAopConfig(beanDefinition));
             beanWrapper.setPostProcessor(beanPostProcessor);
             this.beanWrapperMap.put(beanName,beanWrapper);
             //在实例初始化以后调用一次,进行通知
@@ -75,7 +79,31 @@ public class ApplicationContext implements BeanFactory {
         }
         return null;
     }
+    private AopConfig instantionAopConfig(BeanDefinition beanDefinition) throws Exception {
+        AopConfig aopConfig = new AopConfig();
+        String expression = reader.getConfig().getProperty("pointCut");
+        String[] before = reader.getConfig().getProperty("aspectBefore").split("\\s");
+        String[] after = reader.getConfig().getProperty("aspectAfter").split("\\s");
 
+        //原生对象
+        String className = beanDefinition.getBeanClassName();
+        Class<?> clazz = Class.forName(className);
+
+        Pattern pattern = Pattern.compile(expression);
+
+        Class aspectClass = Class.forName(before[0]);
+        //循环是原生的对象的方法
+        for (Method m : clazz.getMethods()){
+            //public .* org\.study\.demo\.service\..*Service\..*\(.*\)
+            //public void org.study.demo.service.impl.ModifyService.edit(java.lang.String,java.lang.String)
+            Matcher matcher = pattern.matcher(m.toString());
+            if(matcher.matches()){
+                //能满足切面规则的类，添加的AOP配置中
+                aopConfig.put(m,aspectClass.newInstance(),new Method[]{aspectClass.getMethod(before[1]),aspectClass.getMethod(after[1])});
+            }
+        }
+        return  aopConfig;
+    }
     /**
      * 循环对象属性，如果有@Autowired的注解进行对象的注入
      * @param beanName
