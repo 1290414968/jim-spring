@@ -30,11 +30,11 @@ public class AopProxy implements InvocationHandler{
         if(config.contains(m)){
             aspect = config.get(m);
         }
-        aspect.getPoints()[0].invoke(aspect);
+        aspect.getPoints()[0].invoke(aspect.getAspect());
         //反射调用原始的方法
         Object obj = method.invoke(this.target,args);
         //在原始方法调用以后要执行增强的代码
-        aspect.getPoints()[1].invoke(aspect);
+        aspect.getPoints()[1].invoke(aspect.getAspect());
         //将最原始的返回值返回出去
         return obj;
     }
